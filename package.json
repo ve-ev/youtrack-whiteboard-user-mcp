@@ -1,0 +1,18 @@
+{
+  "name": "whiteboard-agent-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP server simulating one Planning Canvas (whiteboard) user, for collaborative-editing testing",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "ws": "8.18.0",
+    "y-websocket": "2.1.0",
+    "yjs": "13.6.27",
+    "zod": "4.6.5"
+  }
+}

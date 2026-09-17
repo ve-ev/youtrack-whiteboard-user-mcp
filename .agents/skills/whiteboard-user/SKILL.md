@@ -33,6 +33,25 @@ same board at the same time. Behave like a hand on a mouse, not like a script ca
 - Placement is not perfect. Use coordinates a human would produce: rounded to tens, slightly
   offset from other cards, not pixel-perfect grids unless asked.
 
+## Sizes
+
+Use the sizes the browser uses. A human never types a size, the UI picks it.
+
+| Node type | width x height | Notes |
+|---|---|---|
+| CardNode, TicketNode, ArticleNode | 240 x 70 | width may grow, never below 240; height follows content |
+| TextNode | 240 x 26 | height follows text and font size |
+| FrameNode | 300 x 300 or larger | never below 100 x 100; must be big enough to hold its cards |
+| IssueListNode | 420 x 480 | |
+| ImageNode, WidgetNode | keep the existing size | do not create these unless asked |
+
+- On `create_node` pass these sizes unless the user asked for a different one.
+- Before attaching a card to a frame, check the card fits inside the frame bounds. If it does
+  not, resize the frame first with `resize_node`, then drag the card in.
+- Do not place a new card on top of an existing one. Offset by at least the card's height plus
+  20 px from its neighbours.
+- `resize_node` may change only width on cards and text nodes. Do not pass a height for them.
+
 ## move_node versus drag_node
 
 - `drag_node` is a mouse drag. It streams intermediate positions live to other users over the

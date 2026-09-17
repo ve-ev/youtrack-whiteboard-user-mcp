@@ -47,6 +47,17 @@ same board at the same time. Behave like a hand on a mouse, not like a script ca
 - `move_node` is one REST write plus one live update. The card teleports. Use it only for setup,
   cleanup, or when explicitly asked for an instant move. It is not a user gesture.
 
+## Typing and resizing
+
+- To change a card's text use `type_text`, not `edit_node`. It holds the card's lock while
+  "typing" and other users watch the text grow, the same as a person at a keyboard. Use
+  `edit_node` only for setup and cleanup. Typing into a card someone else is typing in is allowed,
+  the last write wins, and that collision is a valid thing to test.
+- To resize use `resize_node`. Cards and text nodes take only a width, frames and images take
+  width and height.
+- Leaving the board: call `move_cursor` with no coordinates when the user "walks away" and
+  release any held cards first.
+
 ## Frames
 
 - A `FrameNode` groups cards. A card whose bounds you place inside a frame's bounds must be
@@ -56,6 +67,7 @@ same board at the same time. Behave like a hand on a mouse, not like a script ca
   `frameId`.
 - Dragging a card from one frame into another is a detach followed by an attach to the new
   frame.
+- Dragging a frame with `drag_node` moves the cards inside it along, as in the browser.
 - Decide containment from the live state: the card's `x, y, width, height` fully inside the
   frame's `x, y, width, height`. Frames themselves have `type: "FrameNode"`.
 
@@ -73,6 +85,7 @@ same board at the same time. Behave like a hand on a mouse, not like a script ca
 
 - Move the cursor to the source card, then to the target card, then call `create_link`.
 - Check `get_live_state` first so you do not create a duplicate link between the same pair.
+- `edit_link` changes a link's type or swaps its direction from the label dropdown.
 
 ## Interference scenarios
 

@@ -52,14 +52,17 @@ Then give an agent instructions in plain language, for example:
 | Tool | Effect |
 |---|---|
 | `list_whiteboards`, `connect_whiteboard` | find a board and join it by id or name at runtime |
-| `create_node`, `edit_node`, `move_node`, `delete_node`, `attach_to_frame` | REST + live mirror |
+| `create_node`, `edit_node`, `move_node`, `delete_node`, `duplicate_node`, `attach_to_frame` | REST + live mirror |
+| `drag_node` | locks the card (and frame children), streams positions live, commits over REST, releases |
+| `type_text` | locks the card, streams the growing label or description live, commits over REST |
+| `resize_node` | locks the card, streams the size live, commits over REST |
 | `style_node`, `convert_node` | toolbar actions: color, font size, alignment, description toggle, issue-list size/query, convert to issue/article |
-| `drag_node` | locks the card, streams positions live for `durationMs`, commits over REST, releases |
 | `hold_node` | lock cards without moving them (blocks other users from dragging) |
-| `create_link`, `remove_link` | REST + live mirror |
-| `move_cursor` | moves the persona's visible cursor |
+| `create_link`, `edit_link`, `remove_link` | REST + live mirror; edit changes type or swaps direction |
+| `move_cursor` | moves the persona's visible cursor, or hides it when called without coordinates |
+| `rename_whiteboard` | renames the board for everyone |
 | `get_canvas_state` | persisted truth from the database |
-| `get_live_state` | what this persona sees over the live channel, plus connected users |
+| `get_live_state` | what this persona sees over the live channel, plus connected users, cursors and locks |
 | `observe_broadcast` | waits for changes made by other users |
 
 If `get_live_state` and `get_canvas_state` disagree, or a peer's change never shows up in

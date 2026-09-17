@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { mirrorNodeCreated, mirrorNodeUpdated, mirrorNodeDeleted, mirrorLinkCreated, mirrorLinkDeleted } from './yjsMirror.js'
+import { mirrorNodeCreated, mirrorNodeUpdated, mirrorNodeDeleted, mirrorLinkCreated, mirrorLinkUpdated, mirrorLinkDeleted } from './yjsMirror.js'
 
 const NODE_TYPES = ['TextNode', 'CardNode', 'TicketNode', 'ArticleNode', 'ImageNode', 'WidgetNode', 'FrameNode', 'IssueListNode']
 const FONT_SIZES = [10, 12, 14, 18, 24, 36, 48, 64, 80, 144, 288]
@@ -105,19 +105,120 @@ export function registerTools(server, { rest, session }) {
         // Lock the node plus, for frames, everything inside it, like the browser does.
         const lockIds = [id, ...[...nodes.entries()].filter(([, n]) => n.get('parentId') === id).map(([k]) => k)]
         const from = { x: current.x, y: current.y }
+        const children = lockIds.slice(1).map((cid) => ({ id: cid, ...nodes.get(cid).toJSON() }))
         connection.setNodeLock(lockIds)
         try {
             for (const point of dragPath(from, { x, y }, steps)) {
+                const dx = point.x - from.x, dy = point.y - from.y
                 mirrorNodeUpdated(connection.doc, id, point)
+                for (const c of children) mirrorNodeUpdated(connection.doc, c.id, { x: c.x + dx, y: c.y + dy })
                 connection.setCursor(point.x, point.y)
                 await sleep(durationMs / steps)
             }
-            const node = await rest.updateNode(session.canvasId, id, { x, y })
+            // Browser: plain drop = one POST per node; frame drop = one PATCH for frame + children.
+            const node = children.length === 0
+                ? await rest.updateNode(session.canvasId, id, { x, y })
+                : (await rest.patchNodes(session.canvasId, [
+                    { id, x, y },
+                    ...children.map((c) => ({ id: c.id, x: c.x + (x - from.x), y: c.y + (y - from.y), parentFrame: { id } })),
+                ]))[0]
+            return json({ ...node, from, movedChildren: children.map((c) => c.id), mirrored: connection.connected })
+        } finally {
+            connection.setNodeLock(null)
+        }
+    })
+
+    server.registerTool('type_text', {
+        description:
+            'Type into a card like a person: locks the card, streams the growing text live to other users ' +
+            '(whole string every keystroke batch, as the browser does), then commits over REST. ' +
+            'Replaces the current text unless append is true.',
+        inputSchema: {
+            id: z.string(),
+            field: z.enum(['label', 'description']).default('label'),
+            text: z.string(),
+            append: z.boolean().default(false),
+            charsPerSecond: z.number().min(1).max(200).default(12),
+        },
+    }, async ({ id, field, text, append, charsPerSecond }) => {
+        const current = connection.doc.getMap('nodes').get(id)?.toJSON()
+        if (!current) throw new Error(`Node ${id} is not in this persona's synced document`)
+        const owner = connection.lockedBy(id)
+        const base = append ? (current[field] ?? '') : ''
+        connection.setNodeLock([id])
+        try {
+            // ponytail: one Yjs write per 100 ms window like the browser, not per character
+            const perTick = Math.max(1, Math.round(charsPerSecond / 10))
+            for (let i = perTick; i < text.length + perTick; i += perTick) {
+                mirrorNodeUpdated(connection.doc, id, { [field]: base + text.slice(0, i) })
+                await sleep(100)
+            }
+            const node = await rest.updateNode(session.canvasId, id, { [field]: base + text })
+            return json({ ...node, concurrentEditorAtStart: owner, mirrored: connection.connected })
+        } finally {
+            connection.setNodeLock(null)
+        }
+    })
+
+    server.registerTool('resize_node', {
+        description:
+            'Resize a card by dragging its handle: locks the card, streams the size live, then commits over REST. ' +
+            'Cards and text nodes only take width; frames, images, widgets and issue lists take width and height.',
+        inputSchema: {
+            id: z.string(),
+            width: z.number(),
+            height: z.number().optional(),
+            durationMs: z.number().int().min(50).default(1000),
+            steps: z.number().int().min(1).default(10),
+        },
+    }, async ({ id, width, height, durationMs, steps }) => {
+        const current = connection.doc.getMap('nodes').get(id)?.toJSON()
+        if (!current) throw new Error(`Node ${id} is not in this persona's synced document`)
+        const owner = connection.lockedBy(id)
+        if (owner) throw new Error(`Node ${id} is locked by ${owner}`)
+        const target = { width, ...(height !== undefined ? { height } : {}) }
+        const from = { width: current.width, ...(height !== undefined ? { height: current.height } : {}) }
+        connection.setNodeLock([id])
+        try {
+            for (const p of dragPath({ x: from.width, y: from.height ?? 0 }, { x: width, y: height ?? 0 }, steps)) {
+                mirrorNodeUpdated(connection.doc, id, { width: p.x, ...(height !== undefined ? { height: p.y } : {}) })
+                await sleep(durationMs / steps)
+            }
+            const node = await rest.updateNode(session.canvasId, id, target)
             return json({ ...node, from, mirrored: connection.connected })
         } finally {
             connection.setNodeLock(null)
         }
     })
+
+    server.registerTool('duplicate_node', {
+        description: 'Duplicate a card (Cmd+D): creates a copy offset from the original',
+        inputSchema: { id: z.string(), dx: z.number().default(40), dy: z.number().default(40) },
+    }, async ({ id, dx, dy }) => {
+        const n = connection.doc.getMap('nodes').get(id)?.toJSON()
+        if (!n) throw new Error(`Node ${id} is not in this persona's synced document`)
+        const args = {
+            nodeType: n.type, x: n.x + dx, y: n.y + dy, width: n.width, height: n.height,
+            label: n.label ?? undefined, description: n.description ?? undefined,
+            ticketId: n.ticketId ?? undefined, articleId: n.articleId ?? undefined, parentFrameId: n.parentId ?? undefined,
+        }
+        return mutate(() => rest.createNode(session.canvasId, args), (node) => mirrorNodeCreated(connection.doc, node))
+    })
+
+    server.registerTool('edit_link', {
+        description: 'Edit a link from its label dropdown: change its type, or swap direction by passing source and target reversed',
+        inputSchema: {
+            id: z.string(),
+            type: z.enum(LINK_TYPES).optional(),
+            sourceCardId: z.string().optional(),
+            targetCardId: z.string().optional(),
+        },
+    }, ({ id, ...args }) => mutate(() => rest.updateLink(session.canvasId, id, args), (link) => mirrorLinkUpdated(connection.doc, link)))
+
+    server.registerTool('rename_whiteboard', {
+        description: 'Rename the connected whiteboard (visible to everyone)',
+        inputSchema: { name: z.string().min(1) },
+    }, async ({ name }) => json(await rest.renameCanvas(session.canvasId, name)))
 
     server.registerTool('hold_node', {
         description:
@@ -177,9 +278,9 @@ export function registerTools(server, { rest, session }) {
     }, ({ id }) => mutate(() => rest.removeLink(session.canvasId, id), () => mirrorLinkDeleted(connection.doc, id)))
 
     server.registerTool('move_cursor', {
-        description: 'Move this persona\'s live cursor (visible to other users) to canvas coordinates',
-        inputSchema: { x: z.number(), y: z.number() },
-    }, ({ x, y }) => { connection.setCursor(x, y); return json({ x, y }) })
+        description: 'Move this persona\'s live cursor (visible to other users) to canvas coordinates. Call with no coordinates to leave the board (cursor disappears).',
+        inputSchema: { x: z.number().optional(), y: z.number().optional() },
+    }, ({ x, y }) => { connection.setCursor(x, y); return json({ cursor: x === undefined ? null : { x, y } }) })
 
     server.registerTool('get_canvas_state', {
         description: 'Full persisted state of the whiteboard from the database: all cards and links',

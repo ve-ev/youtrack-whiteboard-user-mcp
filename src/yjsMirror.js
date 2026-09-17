@@ -38,10 +38,19 @@ export function mirrorLinkCreated(doc, link) {
         yEdge.set('source', link.sourceCard.id)
         yEdge.set('target', link.targetCard.id)
         yEdge.set('type', link.type.id)
-        yEdge.set('text', null)
-        yEdge.set('color', null)
         yEdge.set('linkId', link.linkPrototype?.id ?? null)
         doc.getMap('edges').set(link.id, yEdge)
+    }, LOCAL_ACTION_ORIGIN)
+}
+
+export function mirrorLinkUpdated(doc, link) {
+    doc.transact(() => {
+        const yEdge = doc.getMap('edges').get(link.id)
+        if (!yEdge) return
+        yEdge.set('source', link.sourceCard.id)
+        yEdge.set('target', link.targetCard.id)
+        yEdge.set('type', link.type.id)
+        yEdge.set('linkId', link.linkPrototype?.id ?? null)
     }, LOCAL_ACTION_ORIGIN)
 }
 

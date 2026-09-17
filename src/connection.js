@@ -71,7 +71,7 @@ export async function connectPersona({ baseUrl, token, canvasId, user }) {
     return {
         doc,
         get connected() { return provider.wsconnected },
-        setCursor(x, y) { awareness.setLocalStateField('cursor', { x, y }) },
+        setCursor(x, y) { awareness.setLocalStateField('cursor', x === undefined ? null : { x, y }) },
         // Same field the browser sets on drag start/stop; browsers block dragging nodes locked by others.
         setNodeLock(nodeIds) { awareness.setLocalStateField('nodeLock', nodeIds?.length ? { nodeIds } : null) },
         lockedBy(nodeId) {

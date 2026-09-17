@@ -49,6 +49,11 @@ export function createRestClient({ baseUrl, token }) {
         setParentFrame(canvasId, nodeId, frameId) {
             return restCall(baseUrl, token, 'POST', cards(canvasId, nodeId), { parentFrame: frameId ? { id: frameId } : null })
         },
+        // Batch used by the browser for frame placement: [{id, x, y, parentFrame}]
+        patchNodes(canvasId, items) {
+            const body = items.map((it) => ({ $type: 'PlanningCanvasNode', ...it }))
+            return restCall(baseUrl, token, 'PATCH', `/api/planningCanvases/${canvasId}/cards?fields=${NODE_FIELDS}`, body)
+        },
         async deleteNode(canvasId, nodeId) {
             await restCall(baseUrl, token, 'DELETE', `/api/planningCanvases/${canvasId}/cards/${nodeId}`)
             return { deleted: nodeId }
@@ -56,6 +61,16 @@ export function createRestClient({ baseUrl, token }) {
         createLink(canvasId, { sourceCardId, targetCardId, type }) {
             const body = { sourceCard: { id: sourceCardId }, targetCard: { id: targetCardId }, type: { id: type } }
             return restCall(baseUrl, token, 'POST', `/api/planningCanvases/${canvasId}/links?fields=${LINK_FIELDS}`, body)
+        },
+        updateLink(canvasId, linkId, { type, sourceCardId, targetCardId }) {
+            const body = {}
+            if (type) body.type = { id: type }
+            if (sourceCardId) body.sourceCard = { id: sourceCardId }
+            if (targetCardId) body.targetCard = { id: targetCardId }
+            return restCall(baseUrl, token, 'POST', `/api/planningCanvases/${canvasId}/links/${linkId}?fields=${LINK_FIELDS}`, body)
+        },
+        renameCanvas(canvasId, name) {
+            return restCall(baseUrl, token, 'POST', `/api/planningCanvases/${canvasId}/settings?fields=name`, { name })
         },
         async removeLink(canvasId, linkId) {
             await restCall(baseUrl, token, 'DELETE', `/api/planningCanvases/${canvasId}/links/${linkId}`)
